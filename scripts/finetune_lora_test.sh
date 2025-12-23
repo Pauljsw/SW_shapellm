@@ -34,7 +34,7 @@ deepspeed llava/train/train_mem.py \
     --vision_tower ReConV2/cfgs/pretrain/large/openshape.yaml \
     --vision_tower_path ./checkpoints/recon/large.pth \
     --sample_points_num 10000 \
-    --with_color True \
+    --with_color False \
     --occlusion False \
     --prompt_token_num 32 \
     --with_ape True \

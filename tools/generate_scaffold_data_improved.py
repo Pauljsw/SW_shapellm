@@ -6,10 +6,10 @@
 """
 
 import numpy as np
-import torch
 import os
 import random
 import json
+import argparse
 from dataclasses import dataclass
 from typing import List, Tuple, Dict, Optional
 from pathlib import Path
@@ -793,7 +793,7 @@ class EnhancedScaffoldGenerator:
                 target.metadata = target.metadata or {}
                 target.metadata['defect'] = 'loose_connection'
                 defect_info['defect_types'].append('loose_connection')
-                defect_info['violated_components'].append(target.name)
+                defect_info['damaged_components'].append(target.name)
                 defect_info['violations'].append(f"{target.name} 연결부 느슨함")
 
         return components, defect_info
@@ -1164,11 +1164,15 @@ class EnhancedScaffoldGenerator:
         return stats
 
 if __name__ == "__main__":
-    generator = EnhancedScaffoldGenerator(random_seed=42)
+    parser = argparse.ArgumentParser(description='🏗️ ShapeLLM용 비계 합성 데이터 생성 도구')
+    parser.add_argument('--num_scenes', type=int, default=1000, help='생성할 scene 개수 (기본: 1000)')
+    parser.add_argument('--output_dir', type=str, default='./playground/data/shapellm/scaffold_sft',
+                        help='출력 디렉토리 경로 (기본: ./playground/data/shapellm/scaffold_sft)')
+    parser.add_argument('--random_seed', type=int, default=42, help='랜덤 시드 (기본: 42)')
+    args = parser.parse_args()
 
-    # ShapeLLM 형식으로 저장
-    output_dir = "./playground/data/shapellm/scaffold_sft"
-    stats = generator.save_for_shapellm(output_dir, num_scenes=1000)
+    generator = EnhancedScaffoldGenerator(random_seed=args.random_seed)
+    stats = generator.save_for_shapellm(args.output_dir, num_scenes=args.num_scenes)
 
     print("\n🎯 주요 개선사항:")
     print("✅ 색상 정보 제거 (xyz 좌표만)")
