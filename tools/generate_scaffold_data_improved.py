@@ -22,7 +22,8 @@ class ScaffoldComponent:
     semantic_id: int
     instance_id: int
     points: np.ndarray  # [N, 3] coordinates (color 제거)
-    bbox: Optional[np.ndarray] = None  # [8, 3] bounding box corners
+    bbox: Optional[np.ndarray] = None  # [8, 3] bounding box corners (world coords)
+    bbox_norm: Optional[np.ndarray] = None  # [8, 3] bounding box corners (normalized coords)
     metadata: Optional[Dict] = None  # 추가 메타데이터
 
 class KoreanScaffoldRegulations:
@@ -1083,30 +1084,63 @@ class EnhancedScaffoldGenerator:
             semantic_gt = np.hstack([semantic_gt, extra_semantic])
             instance_gt = np.hstack([instance_gt, extra_instance])
 
-        # 정규화
-        center = np.mean(coord, axis=0)
-        coord = coord - center
+        # 정규화 (v2 방식: center + scale + rotation)
+        centroid = np.mean(coord, axis=0)
+        coord_centered = coord - centroid
+
+        # Scale: max distance from origin
+        scale = float(np.linalg.norm(coord_centered, axis=1).max() + 1e-12)
+        coord_scaled = coord_centered / scale
+
+        # Optional Z-rotation (작은 각도로 augmentation)
+        Rz_deg = float(np.random.uniform(-10.0, 10.0))
+        theta = np.radians(Rz_deg)
+        cos_t, sin_t = np.cos(theta), np.sin(theta)
+        R = np.array([[cos_t, -sin_t, 0], [sin_t, cos_t, 0], [0, 0, 1]], dtype=np.float32)
+        coord_norm = (R @ coord_scaled.T).T
+
+        # Normalization metadata 저장
+        norm_params = {
+            'centroid': centroid.tolist(),
+            'scale': scale,
+            'Rz_deg': Rz_deg
+        }
+
+        # Components에 bbox_norm 추가 (bbox_world는 이미 있음)
+        for comp in components:
+            if comp.bbox is not None:
+                # bbox_world → bbox_norm 변환
+                bbox_centered = (comp.bbox - centroid) / scale
+                comp.bbox_norm = (R @ bbox_centered.T).T
+            else:
+                comp.bbox_norm = None
 
         # ShapeLLM annotations 생성
         annotations = self.generate_shapellm_annotations(scene_id, components, config)
 
         return {
-            'coord': coord,
+            'coord': coord_norm,
             'semantic_gt': semantic_gt,
             'instance_gt': instance_gt,
             'scene_id': scene_id,
             'config': config,
             'annotations': annotations,
-            'components': components
+            'components': components,
+            'norm_params': norm_params  # ← 추가
         }
 
-    def save_for_shapellm(self, output_dir, num_scenes=1000):
-        """ShapeLLM 형식으로 저장"""
+    def save_for_shapellm(self, output_dir, num_scenes=1000, train_ratio=0.8, val_ratio=0.1):
+        """ShapeLLM 형식으로 저장 (v2 features: meta, labels, split)"""
         output_path = Path(output_dir)
         pcs_dir = output_path / 'pcs'
-        pcs_dir.mkdir(parents=True, exist_ok=True)
+        meta_dir = output_path / 'meta'
+        labels_dir = output_path / 'labels'
+
+        for d in [pcs_dir, meta_dir, labels_dir]:
+            d.mkdir(parents=True, exist_ok=True)
 
         all_annotations = []
+        all_scene_ids = []
         stats = defaultdict(int)
 
         print(f"🏗️ ShapeLLM용 비계 데이터 생성 시작 ({num_scenes} scenes)...")
@@ -1122,8 +1156,35 @@ class EnhancedScaffoldGenerator:
             # .npy 파일 저장 (색상 정보 없이 xyz만)
             np.save(pcs_dir / f"{scene_id}.npy", scene_data['coord'].astype(np.float32))
 
+            # Normalization metadata 저장 (v2 feature)
+            scene_meta = {
+                'scene_id': scene_id,
+                'config': scene_data['config'],
+                'norm_params': scene_data['norm_params']
+            }
+            with open(meta_dir / f"{scene_id}_meta.json", 'w', encoding='utf-8') as f:
+                json.dump(scene_meta, f, indent=2, ensure_ascii=False)
+
+            # Labels 저장 (bbox_world + bbox_norm) (v2 feature)
+            labels = []
+            for comp in scene_data['components']:
+                label = {
+                    'instance_id': comp.instance_id,
+                    'name': comp.name,
+                    'class': self.class_names[comp.semantic_id],
+                    'semantic_id': comp.semantic_id,
+                    'bbox_world': comp.bbox.tolist() if comp.bbox is not None else None,
+                    'bbox_norm': comp.bbox_norm.tolist() if comp.bbox_norm is not None else None,
+                    'metadata': comp.metadata
+                }
+                labels.append(label)
+
+            with open(labels_dir / f"{scene_id}_label.json", 'w', encoding='utf-8') as f:
+                json.dump(labels, f, indent=2, ensure_ascii=False)
+
             # Annotations 수집
             all_annotations.extend(scene_data['annotations'])
+            all_scene_ids.append(scene_id)
 
             # 통계
             stats['total'] += 1
@@ -1132,9 +1193,38 @@ class EnhancedScaffoldGenerator:
             if (i + 1) % 100 == 0:
                 print(f"  진행: {i + 1}/{num_scenes}")
 
-        # Annotations JSON 저장
-        with open(output_path / 'instructions_train.json', 'w', encoding='utf-8') as f:
-            json.dump(all_annotations, f, indent=2, ensure_ascii=False)
+        # Train/val/test split (v2 feature)
+        n = len(all_scene_ids)
+        indices = np.arange(n)
+        np.random.shuffle(indices)
+
+        n_train = int(train_ratio * n)
+        n_val = int(val_ratio * n)
+
+        split = {
+            'train': [all_scene_ids[i] for i in indices[:n_train]],
+            'val': [all_scene_ids[i] for i in indices[n_train:n_train+n_val]],
+            'test': [all_scene_ids[i] for i in indices[n_train+n_val:]]
+        }
+
+        with open(output_path / 'split.json', 'w', encoding='utf-8') as f:
+            json.dump(split, f, indent=2, ensure_ascii=False)
+
+        # Annotations를 split별로 저장
+        # Scene ID → annotations 매핑
+        scene_to_annotations = defaultdict(list)
+        for ann in all_annotations:
+            # annotation의 scene_id는 'point' 필드에서 추출
+            scene_id = ann['point'].replace('.npy', '')
+            scene_to_annotations[scene_id].append(ann)
+
+        for split_name in ['train', 'val', 'test']:
+            split_annotations = []
+            for scene_id in split[split_name]:
+                split_annotations.extend(scene_to_annotations[scene_id])
+
+            with open(output_path / f'instructions_{split_name}.json', 'w', encoding='utf-8') as f:
+                json.dump(split_annotations, f, indent=2, ensure_ascii=False)
 
         # 메타데이터 저장
         metadata = {
@@ -1145,7 +1235,12 @@ class EnhancedScaffoldGenerator:
                 'minor_defect': stats['minor_defect'],
                 'major_defect': stats['major_defect']
             },
-            'total_annotations': len(all_annotations)
+            'total_annotations': len(all_annotations),
+            'split': {
+                'train': len(split['train']),
+                'val': len(split['val']),
+                'test': len(split['test'])
+            }
         }
 
         with open(output_path / 'metadata.json', 'w', encoding='utf-8') as f:
@@ -1155,7 +1250,10 @@ class EnhancedScaffoldGenerator:
         print("✅ ShapeLLM용 비계 데이터셋 생성 완료!")
         print("="*60)
         print(f"📁 Point Clouds: {pcs_dir} ({stats['total']}개)")
-        print(f"📄 Annotations: {output_path / 'instructions_train.json'} ({len(all_annotations)}개)")
+        print(f"📁 Meta: {meta_dir} ({stats['total']}개)")
+        print(f"📁 Labels: {labels_dir} ({stats['total']}개)")
+        print(f"📄 Annotations: instructions_{{train,val,test}}.json")
+        print(f"📄 Split: train={len(split['train'])}, val={len(split['val'])}, test={len(split['test'])}")
         print(f"\n📊 안전 상태 분포:")
         print(f"  ✅ 안전: {stats['safe']}개")
         print(f"  ⚠️ 경미: {stats['minor_defect']}개")
@@ -1164,22 +1262,31 @@ class EnhancedScaffoldGenerator:
         return stats
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description='🏗️ ShapeLLM용 비계 합성 데이터 생성 도구')
+    parser = argparse.ArgumentParser(description='🏗️ ShapeLLM용 비계 합성 데이터 생성 도구 (v2 enhanced)')
     parser.add_argument('--num_scenes', type=int, default=1000, help='생성할 scene 개수 (기본: 1000)')
     parser.add_argument('--output_dir', type=str, default='./playground/data/shapellm/scaffold_sft',
                         help='출력 디렉토리 경로 (기본: ./playground/data/shapellm/scaffold_sft)')
     parser.add_argument('--random_seed', type=int, default=42, help='랜덤 시드 (기본: 42)')
+    parser.add_argument('--train_ratio', type=float, default=0.8, help='Train split 비율 (기본: 0.8)')
+    parser.add_argument('--val_ratio', type=float, default=0.1, help='Validation split 비율 (기본: 0.1)')
     args = parser.parse_args()
 
     generator = EnhancedScaffoldGenerator(random_seed=args.random_seed)
-    stats = generator.save_for_shapellm(args.output_dir, num_scenes=args.num_scenes)
+    stats = generator.save_for_shapellm(
+        args.output_dir,
+        num_scenes=args.num_scenes,
+        train_ratio=args.train_ratio,
+        val_ratio=args.val_ratio
+    )
 
-    print("\n🎯 주요 개선사항:")
+    print("\n🎯 v2 주요 개선사항:")
     print("✅ 색상 정보 제거 (xyz 좌표만)")
     print("✅ 한국 산업안전보건기준 반영")
     print("✅ 다양한 결함 유형 (휨/균열/부식/느슨함)")
     print("✅ ShapeLLM annotation 형식")
-    print("✅ Bbox 정보 포함")
+    print("✅ Bbox 정보 포함 (world + normalized)")
+    print("✅ 정규화 메타데이터 저장 (centroid, scale, Rz_deg)")
+    print("✅ Train/val/test split 지원")
     print("✅ 5단계 학습 목표 지원")
     print("  1️⃣ Referring Segmentation")
     print("  2️⃣ 누락 감지")
