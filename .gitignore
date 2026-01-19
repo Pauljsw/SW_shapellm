@@ -1,1 +1,7 @@
 playground/data/shapellm/scaffold_sft/
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
