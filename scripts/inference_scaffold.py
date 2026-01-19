@@ -90,7 +90,7 @@ def main():
                         help='Base model path')
     parser.add_argument('--point_file', type=str, required=True,
                         help='Point cloud file (.npy)')
-    parser.add_argument('--question', type=str, default='이 비계의 안전성을 평가해주세요.',
+    parser.add_argument('--question', type=str, default='Please assess the safety of this scaffold.',
                         help='Question to ask')
     parser.add_argument('--sample_points_num', type=int, default=10000,
                         help='Number of points to sample')
@@ -119,14 +119,14 @@ def main():
     print(f"✅ Point cloud shape: {point_cloud.shape}")
 
     # Inference
-    print(f"\n질문: {args.question}")
+    print(f"\nQuestion: {args.question}")
     print("=" * 60)
 
     response = inference_single(
         model, tokenizer, point_cloud, args.question
     )
 
-    print(f"답변:\n{response}")
+    print(f"Response:\n{response}")
     print("=" * 60)
 
 if __name__ == "__main__":
