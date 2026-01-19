@@ -245,8 +245,8 @@ class EnhancedScaffoldGenerator:
             bbox = self.calculate_bbox(points)
 
             component = ScaffoldComponent(
-                name=f"안전난간_{rail_type}_{self.instance_counter}",
-                semantic_id=8,  # 안전난간
+                name=f"handrail_{rail_type}_{self.instance_counter}",
+                semantic_id=8,
                 instance_id=self.instance_counter,
                 points=points,
                 bbox=bbox,
@@ -397,7 +397,7 @@ class EnhancedScaffoldGenerator:
                 bbox = self.calculate_bbox(base_points)
 
                 component = ScaffoldComponent(
-                    name=f"하부받침_{self.instance_counter}",
+                    name=f"base_support_{self.instance_counter}",
                     semantic_id=4,
                     instance_id=self.instance_counter,
                     points=base_points,
@@ -457,7 +457,7 @@ class EnhancedScaffoldGenerator:
                 bbox = self.calculate_bbox(points)
 
                 component = ScaffoldComponent(
-                    name=f"수직재_{self.instance_counter}",
+                    name=f"vertical_post_{self.instance_counter}",
                     semantic_id=0,
                     instance_id=self.instance_counter,
                     points=points,
@@ -486,7 +486,7 @@ class EnhancedScaffoldGenerator:
                         bbox = self.calculate_bbox(points)
 
                         component = ScaffoldComponent(
-                            name=f"수평재_X_{self.instance_counter}",
+                            name=f"horizontal_beam_X_{self.instance_counter}",
                             semantic_id=1,
                             instance_id=self.instance_counter,
                             points=points,
@@ -507,7 +507,7 @@ class EnhancedScaffoldGenerator:
                     bbox = self.calculate_bbox(points)
 
                     component = ScaffoldComponent(
-                        name=f"수평재_Y_{self.instance_counter}",
+                        name=f"horizontal_beam_Y_{self.instance_counter}",
                         semantic_id=1,
                         instance_id=self.instance_counter,
                         points=points,
@@ -546,7 +546,7 @@ class EnhancedScaffoldGenerator:
                             bbox = self.calculate_bbox(points)
 
                             component = ScaffoldComponent(
-                                name=f"대각재_{floor_idx}층_{self.instance_counter}",
+                                name=f"diagonal_brace_f{floor_idx}_{self.instance_counter}",
                                 semantic_id=2,
                                 instance_id=self.instance_counter,
                                 points=points,
@@ -600,8 +600,8 @@ class EnhancedScaffoldGenerator:
                     bbox = self.calculate_bbox(points)
 
                     component = ScaffoldComponent(
-                        name=f"누락발판_{floor_idx}층_{bay}베이_{self.instance_counter}",
-                        semantic_id=10,  # 누락부분
+                        name=f"missing_platform_f{floor_idx}_b{bay}_{self.instance_counter}",
+                        semantic_id=10,
                         instance_id=self.instance_counter,
                         points=points,
                         bbox=bbox,
@@ -610,7 +610,7 @@ class EnhancedScaffoldGenerator:
                     components.append(component)
                     self.instance_counter += 1
 
-                    violations.append(f"{floor_idx}층 {bay}베이 발판 누락")
+                    violations.append(f"Floor {floor_idx} Bay {bay} platform missing")
                     continue
 
                 # 정상 발판
@@ -627,9 +627,9 @@ class EnhancedScaffoldGenerator:
                 if len(platform_points) > 0:
                     bbox = self.calculate_bbox(platform_points)
 
-                    floor_name = "지면" if floor_idx == 0 else f"{floor_idx}층"
+                    floor_name = "ground" if floor_idx == 0 else f"f{floor_idx}"
                     component = ScaffoldComponent(
-                        name=f"발판_{floor_name}_{bay}베이_{self.instance_counter}",
+                        name=f"platform_{floor_name}_b{bay}_{self.instance_counter}",
                         semantic_id=3,
                         instance_id=self.instance_counter,
                         points=platform_points,
@@ -724,7 +724,7 @@ class EnhancedScaffoldGenerator:
                         bbox = self.calculate_bbox(points)
 
                         component = ScaffoldComponent(
-                            name=f"계단_{floor_idx}층_{self.instance_counter}",
+                            name=f"stair_f{floor_idx}_{self.instance_counter}",
                             semantic_id=6,
                             instance_id=self.instance_counter,
                             points=points,
@@ -820,7 +820,7 @@ class EnhancedScaffoldGenerator:
             bbox = self.calculate_bbox(all_points)
 
             return ScaffoldComponent(
-                name=f"손상수평재_휨_{self.instance_counter}",
+                name=f"damaged_beam_bent_{self.instance_counter}",
                 semantic_id=9,
                 instance_id=self.instance_counter,
                 points=all_points,
@@ -849,7 +849,7 @@ class EnhancedScaffoldGenerator:
         bbox = self.calculate_bbox(cracked_points)
 
         return ScaffoldComponent(
-            name=f"손상수평재_균열_{self.instance_counter}",
+            name=f"damaged_beam_cracked_{self.instance_counter}",
             semantic_id=9,
             instance_id=self.instance_counter,
             points=cracked_points,
@@ -870,7 +870,7 @@ class EnhancedScaffoldGenerator:
         bbox = self.calculate_bbox(corroded_points)
 
         return ScaffoldComponent(
-            name=f"손상수평재_부식_{self.instance_counter}",
+            name=f"damaged_beam_corroded_{self.instance_counter}",
             semantic_id=9,
             instance_id=self.instance_counter,
             points=corroded_points,
