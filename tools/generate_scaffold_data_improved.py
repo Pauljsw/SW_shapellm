@@ -579,7 +579,7 @@ class EnhancedScaffoldGenerator:
         violations = []
 
         safety_status = config.get('safety_status', 'safe')
-        missing_rates = {'safe': 0.0, 'minor_defect': 0.1, 'major_defect': 0.2}
+        missing_rates = {'safe': 0.0, 'minor_defect': 0.2, 'major_defect': 0.4}
         missing_rate = missing_rates[safety_status]
 
         for floor_idx, z in enumerate(cumulative_heights[:-1]):
@@ -879,7 +879,7 @@ class EnhancedScaffoldGenerator:
         )
 
     def generate_shapellm_annotations(self, scene_id, components, config):
-        """🆕 ShapeLLM 형식 annotation 생성"""
+        """🆕 ShapeLLM 형식 annotation 생성 (GAPartNet 스타일 - 대폭 확장)"""
         annotations = []
 
         # 규정 위반 정보
@@ -887,35 +887,93 @@ class EnhancedScaffoldGenerator:
         defect_info = config.get('defect_info', {})
         safety_status = config.get('safety_status', 'safe')
 
-        # 1️⃣ Referring Segmentation 질문
-        # 랜덤하게 부품 선택
-        if len(components) > 0:
-            target_comp = random.choice(components)
+        # 부품 분류
+        platforms = [c for c in components if c.semantic_id == 3]  # 발판
+        verticals = [c for c in components if c.semantic_id == 0]  # 수직재
+        horizontals = [c for c in components if c.semantic_id == 1]  # 수평재
+        handrails = [c for c in components if c.semantic_id == 8]  # 안전난간
+        missing_comps = [c for c in components if c.semantic_id == 10]  # 누락
+        damaged_comps = [c for c in components if c.semantic_id == 9]  # 손상
 
-            # Bbox 정보
-            bbox_str = self._format_bbox(target_comp.bbox) if target_comp.bbox is not None else "정보 없음"
+        # =================================================================
+        # 1️⃣ Referring Segmentation (GAPartNet 스타일: 다수 생성)
+        # =================================================================
 
+        # 1-1. 모든 발판에 대해 질문 (최대 15개)
+        selected_platforms = random.sample(platforms, min(15, len(platforms))) if platforms else []
+        for idx, comp in enumerate(selected_platforms, 1):
+            bbox_str = self._format_bbox(comp.bbox) if comp.bbox is not None else "정보 없음"
             annotations.append({
-                'id': f"{scene_id}_referring_001",
+                'id': f"{scene_id}_referring_platform_{idx:03d}",
                 'point': f"{scene_id}.npy",
                 'conversations': [
                     {
                         'from': 'human',
-                        'value': f'<point>\n{target_comp.name}의 위치를 알려주세요.'
+                        'value': f'<point>\n{comp.name}의 위치를 알려주세요.'
                     },
                     {
                         'from': 'gpt',
-                        'value': f'{target_comp.name}은(는) {self.class_names[target_comp.semantic_id]} 부품입니다. '
+                        'value': f'{comp.name}은(는) {self.class_names[comp.semantic_id]} 부품입니다. '
                                 f'위치: {bbox_str}'
                     }
                 ],
                 'task_type': 'referring_segmentation',
-                'target_instance_id': target_comp.instance_id
+                'target_instance_id': comp.instance_id,
+                'target_semantic_id': comp.semantic_id
             })
 
-        # 2️⃣ 누락 감지 질문
-        missing_comps = [c for c in components if c.semantic_id == 10]
+        # 1-2. 주요 수직재 질문 (5개)
+        selected_verticals = random.sample(verticals, min(5, len(verticals))) if verticals else []
+        for idx, comp in enumerate(selected_verticals, 1):
+            bbox_str = self._format_bbox(comp.bbox) if comp.bbox is not None else "정보 없음"
+            annotations.append({
+                'id': f"{scene_id}_referring_vertical_{idx:03d}",
+                'point': f"{scene_id}.npy",
+                'conversations': [
+                    {
+                        'from': 'human',
+                        'value': f'<point>\n{comp.name}의 위치를 알려주세요.'
+                    },
+                    {
+                        'from': 'gpt',
+                        'value': f'{comp.name}은(는) {self.class_names[comp.semantic_id]} 부품입니다. '
+                                f'위치: {bbox_str}'
+                    }
+                ],
+                'task_type': 'referring_segmentation',
+                'target_instance_id': comp.instance_id,
+                'target_semantic_id': comp.semantic_id
+            })
+
+        # 1-3. 안전난간 질문 (5개)
+        selected_handrails = random.sample(handrails, min(5, len(handrails))) if handrails else []
+        for idx, comp in enumerate(selected_handrails, 1):
+            bbox_str = self._format_bbox(comp.bbox) if comp.bbox is not None else "정보 없음"
+            annotations.append({
+                'id': f"{scene_id}_referring_handrail_{idx:03d}",
+                'point': f"{scene_id}.npy",
+                'conversations': [
+                    {
+                        'from': 'human',
+                        'value': f'<point>\n{comp.name}의 위치를 알려주세요.'
+                    },
+                    {
+                        'from': 'gpt',
+                        'value': f'{comp.name}은(는) {self.class_names[comp.semantic_id]} 부품입니다. '
+                                f'위치: {bbox_str}'
+                    }
+                ],
+                'task_type': 'referring_segmentation',
+                'target_instance_id': comp.instance_id,
+                'target_semantic_id': comp.semantic_id
+            })
+
+        # =================================================================
+        # 2️⃣ Missing Detection (대폭 확장 - 핵심 과업!)
+        # =================================================================
+
         if len(missing_comps) > 0:
+            # 2-1. 전체 요약 질문
             missing_info = []
             for comp in missing_comps:
                 metadata = comp.metadata or {}
@@ -925,7 +983,7 @@ class EnhancedScaffoldGenerator:
                 missing_info.append(f"- {floor}층 {bay}베이: {bbox_str}")
 
             annotations.append({
-                'id': f"{scene_id}_missing_001",
+                'id': f"{scene_id}_missing_summary",
                 'point': f"{scene_id}.npy",
                 'conversations': [
                     {
@@ -934,18 +992,185 @@ class EnhancedScaffoldGenerator:
                     },
                     {
                         'from': 'gpt',
-                        'value': f'네, {len(missing_comps)}개의 발판이 누락되었습니다:\n' + '\n'.join(missing_info)
+                        'value': f'네, 총 {len(missing_comps)}개의 발판이 누락되었습니다:\n' + '\n'.join(missing_info)
                     }
                 ],
-                'task_type': 'defect_detection',
+                'task_type': 'missing_detection_summary',
                 'defect_type': 'missing_platform',
                 'num_defects': len(missing_comps)
             })
 
-        # 3️⃣ 구조 안정성 질문
+            # 2-2. 층별 누락 질문 (각 층마다)
+            floors_with_missing = {}
+            for comp in missing_comps:
+                metadata = comp.metadata or {}
+                floor = metadata.get('floor', '?')
+                if floor not in floors_with_missing:
+                    floors_with_missing[floor] = []
+                floors_with_missing[floor].append(comp)
+
+            for floor, comps in floors_with_missing.items():
+                floor_missing_info = []
+                for comp in comps:
+                    metadata = comp.metadata or {}
+                    bay = metadata.get('bay', '?')
+                    bbox_str = self._format_bbox(comp.bbox)
+                    floor_missing_info.append(f"- {bay}베이: {bbox_str}")
+
+                annotations.append({
+                    'id': f"{scene_id}_missing_floor_{floor}",
+                    'point': f"{scene_id}.npy",
+                    'conversations': [
+                        {
+                            'from': 'human',
+                            'value': f'<point>\n{floor}층에 누락된 부재가 있나요?'
+                        },
+                        {
+                            'from': 'gpt',
+                            'value': f'네, {floor}층에 {len(comps)}개의 발판이 누락되었습니다:\n' + '\n'.join(floor_missing_info)
+                        }
+                    ],
+                    'task_type': 'missing_detection_floor',
+                    'target_floor': floor,
+                    'num_defects': len(comps)
+                })
+
+            # 2-3. 베이별 누락 질문
+            bays_with_missing = {}
+            for comp in missing_comps:
+                metadata = comp.metadata or {}
+                bay = metadata.get('bay', '?')
+                if bay not in bays_with_missing:
+                    bays_with_missing[bay] = []
+                bays_with_missing[bay].append(comp)
+
+            for bay, comps in bays_with_missing.items():
+                bay_missing_info = []
+                for comp in comps:
+                    metadata = comp.metadata or {}
+                    floor = metadata.get('floor', '?')
+                    bbox_str = self._format_bbox(comp.bbox)
+                    bay_missing_info.append(f"- {floor}층: {bbox_str}")
+
+                annotations.append({
+                    'id': f"{scene_id}_missing_bay_{bay}",
+                    'point': f"{scene_id}.npy",
+                    'conversations': [
+                        {
+                            'from': 'human',
+                            'value': f'<point>\n베이 {bay}에 누락된 부재가 있나요?'
+                        },
+                        {
+                            'from': 'gpt',
+                            'value': f'네, 베이 {bay}에 {len(comps)}개의 발판이 누락되었습니다:\n' + '\n'.join(bay_missing_info)
+                        }
+                    ],
+                    'task_type': 'missing_detection_bay',
+                    'target_bay': bay,
+                    'num_defects': len(comps)
+                })
+
+            # 2-4. 개별 누락 부품에 대한 세부 질문 (최대 5개)
+            selected_missing = random.sample(missing_comps, min(5, len(missing_comps)))
+            for idx, comp in enumerate(selected_missing, 1):
+                metadata = comp.metadata or {}
+                floor = metadata.get('floor', '?')
+                bay = metadata.get('bay', '?')
+                bbox_str = self._format_bbox(comp.bbox)
+
+                annotations.append({
+                    'id': f"{scene_id}_missing_specific_{idx:03d}",
+                    'point': f"{scene_id}.npy",
+                    'conversations': [
+                        {
+                            'from': 'human',
+                            'value': f'<point>\n{floor}층 {bay}베이의 발판이 있나요?'
+                        },
+                        {
+                            'from': 'gpt',
+                            'value': f'아니요, {floor}층 {bay}베이의 발판이 누락되었습니다. '
+                                    f'있어야 할 위치: {bbox_str}'
+                        }
+                    ],
+                    'task_type': 'missing_detection_specific',
+                    'target_floor': floor,
+                    'target_bay': bay,
+                    'target_instance_id': comp.instance_id
+                })
+
+        else:
+            # 누락이 없는 경우도 질문 생성 (negative sample)
+            annotations.append({
+                'id': f"{scene_id}_missing_none",
+                'point': f"{scene_id}.npy",
+                'conversations': [
+                    {
+                        'from': 'human',
+                        'value': '<point>\n누락된 부재가 있나요?'
+                    },
+                    {
+                        'from': 'gpt',
+                        'value': '아니요, 모든 발판이 정상적으로 설치되어 있습니다.'
+                    }
+                ],
+                'task_type': 'missing_detection_negative',
+                'num_defects': 0
+            })
+
+        # =================================================================
+        # 3️⃣ Safety Assessment (세부 검사 추가)
+        # =================================================================
+
+        # 3-1. 전체 안전성 요약
         if len(violations) > 0:
             annotations.append({
-                'id': f"{scene_id}_safety_001",
+                'id': f"{scene_id}_safety_summary",
+                'point': f"{scene_id}.npy",
+                'conversations': [
+                    {
+                        'from': 'human',
+                        'value': '<point>\n이 비계의 구조적 안전성을 전반적으로 평가해주세요.'
+                    },
+                    {
+                        'from': 'gpt',
+                        'value': f'이 비계는 {len(violations)}개의 안전 문제가 있습니다:\n' + '\n'.join([f'- {v}' for v in violations[:5]])
+                    }
+                ],
+                'task_type': 'safety_assessment_summary',
+                'safety_status': safety_status,
+                'num_violations': len(violations)
+            })
+
+            # 3-2. 개별 규정 검사 질문 (최대 5개)
+            violation_types = {
+                '간격': [v for v in violations if '간격' in v],
+                '가새': [v for v in violations if '가새' in v],
+                '난간': [v for v in violations if '난간' in v],
+                '발판': [v for v in violations if '발판' in v],
+            }
+
+            for vtype, vlist in violation_types.items():
+                if vlist:
+                    annotations.append({
+                        'id': f"{scene_id}_safety_{vtype}",
+                        'point': f"{scene_id}.npy",
+                        'conversations': [
+                            {
+                                'from': 'human',
+                                'value': f'<point>\n{vtype} 관련 안전 기준은 준수하나요?'
+                            },
+                            {
+                                'from': 'gpt',
+                                'value': f'아니요, {len(vlist)}개의 {vtype} 관련 문제가 있습니다:\n' + '\n'.join([f'- {v}' for v in vlist[:3]])
+                            }
+                        ],
+                        'task_type': 'safety_assessment_specific',
+                        'violation_category': vtype,
+                        'num_violations': len(vlist)
+                    })
+        else:
+            annotations.append({
+                'id': f"{scene_id}_safety_pass",
                 'point': f"{scene_id}.npy",
                 'conversations': [
                     {
@@ -954,17 +1179,20 @@ class EnhancedScaffoldGenerator:
                     },
                     {
                         'from': 'gpt',
-                        'value': f'이 비계는 {len(violations)}개의 안전 문제가 있습니다:\n' + '\n'.join([f'- {v}' for v in violations[:5]])  # 최대 5개
+                        'value': '이 비계는 구조적으로 안전합니다. 주요 안전 기준을 모두 준수하고 있습니다.'
                     }
                 ],
-                'task_type': 'safety_assessment',
-                'safety_status': safety_status,
-                'num_violations': len(violations)
+                'task_type': 'safety_assessment_pass',
+                'safety_status': 'safe',
+                'num_violations': 0
             })
 
-        # 4️⃣ 손상 부위 식별
-        damaged_comps = [c for c in components if c.semantic_id == 9]
+        # =================================================================
+        # 4️⃣ Damage Detection (손상 유형별 세분화)
+        # =================================================================
+
         if len(damaged_comps) > 0:
+            # 4-1. 전체 손상 요약
             damage_info = []
             for comp in damaged_comps:
                 metadata = comp.metadata or {}
@@ -981,7 +1209,7 @@ class EnhancedScaffoldGenerator:
                 damage_info.append(f"- {comp.name}: {defect_kr}, 위치: {bbox_str}")
 
             annotations.append({
-                'id': f"{scene_id}_damage_001",
+                'id': f"{scene_id}_damage_summary",
                 'point': f"{scene_id}.npy",
                 'conversations': [
                     {
@@ -993,14 +1221,104 @@ class EnhancedScaffoldGenerator:
                         'value': f'네, {len(damaged_comps)}개의 손상된 부품이 발견되었습니다:\n' + '\n'.join(damage_info)
                     }
                 ],
-                'task_type': 'damage_detection',
+                'task_type': 'damage_detection_summary',
                 'num_damaged': len(damaged_comps)
             })
 
-        # 5️⃣ 규정 준수 여부
+            # 4-2. 손상 유형별 질문
+            damage_by_type = {}
+            for comp in damaged_comps:
+                metadata = comp.metadata or {}
+                defect_type = metadata.get('defect_type', 'unknown')
+                if defect_type not in damage_by_type:
+                    damage_by_type[defect_type] = []
+                damage_by_type[defect_type].append(comp)
+
+            defect_kr_map = {
+                'bent': '휨 변형',
+                'cracked': '균열',
+                'corroded': '부식',
+                'loose_connection': '연결부 느슨함'
+            }
+
+            for dtype, comps in damage_by_type.items():
+                dtype_kr = defect_kr_map.get(dtype, dtype)
+                damage_list = []
+                for comp in comps:
+                    bbox_str = self._format_bbox(comp.bbox)
+                    damage_list.append(f"- {comp.name}: {bbox_str}")
+
+                annotations.append({
+                    'id': f"{scene_id}_damage_{dtype}",
+                    'point': f"{scene_id}.npy",
+                    'conversations': [
+                        {
+                            'from': 'human',
+                            'value': f'<point>\n{dtype_kr}이 있는 부품이 있나요?'
+                        },
+                        {
+                            'from': 'gpt',
+                            'value': f'네, {len(comps)}개의 부품에서 {dtype_kr}이 발견되었습니다:\n' + '\n'.join(damage_list)
+                        }
+                    ],
+                    'task_type': 'damage_detection_by_type',
+                    'damage_type': dtype,
+                    'num_damaged': len(comps)
+                })
+
+            # 4-3. 개별 손상 부품 세부 질문 (최대 3개)
+            selected_damaged = random.sample(damaged_comps, min(3, len(damaged_comps)))
+            for idx, comp in enumerate(selected_damaged, 1):
+                metadata = comp.metadata or {}
+                defect_type = metadata.get('defect_type', 'unknown')
+                defect_kr = defect_kr_map.get(defect_type, defect_type)
+                bbox_str = self._format_bbox(comp.bbox)
+
+                annotations.append({
+                    'id': f"{scene_id}_damage_specific_{idx:03d}",
+                    'point': f"{scene_id}.npy",
+                    'conversations': [
+                        {
+                            'from': 'human',
+                            'value': f'<point>\n이 부품의 상태를 확인해주세요. 위치: {bbox_str[:50]}...'
+                        },
+                        {
+                            'from': 'gpt',
+                            'value': f'이 부품({comp.name})은 {defect_kr} 손상이 있습니다. '
+                                    f'즉시 교체가 필요합니다.'
+                        }
+                    ],
+                    'task_type': 'damage_detection_specific',
+                    'damage_type': defect_type,
+                    'target_instance_id': comp.instance_id
+                })
+        else:
+            annotations.append({
+                'id': f"{scene_id}_damage_none",
+                'point': f"{scene_id}.npy",
+                'conversations': [
+                    {
+                        'from': 'human',
+                        'value': '<point>\n손상된 부품이 있나요?'
+                    },
+                    {
+                        'from': 'gpt',
+                        'value': '아니요, 모든 부품이 양호한 상태입니다.'
+                    }
+                ],
+                'task_type': 'damage_detection_negative',
+                'num_damaged': 0
+            })
+
+        # =================================================================
+        # 5️⃣ Regulation Compliance (규정별 세분화)
+        # =================================================================
+
         compliant = config.get('compliant', True)
+
+        # 5-1. 전체 규정 준수 여부
         annotations.append({
-            'id': f"{scene_id}_regulation_001",
+            'id': f"{scene_id}_regulation_overall",
             'point': f"{scene_id}.npy",
             'conversations': [
                 {
@@ -1009,13 +1327,150 @@ class EnhancedScaffoldGenerator:
                 },
                 {
                     'from': 'gpt',
-                    'value': f"{'준수합니다.' if compliant else '준수하지 않습니다.'}\n"
-                            f"{'문제 없음' if compliant else '위반 사항: ' + ', '.join(violations[:3])}"
+                    'value': f"{'네, 준수합니다.' if compliant else '아니요, 준수하지 않습니다.'}\n"
+                            f"{'모든 안전 기준을 충족합니다.' if compliant else '위반 사항: ' + ', '.join(violations[:3])}"
                 }
             ],
-            'task_type': 'regulation_compliance',
+            'task_type': 'regulation_compliance_overall',
             'compliant': compliant
         })
+
+        # 5-2. 개별 규정 항목 질문
+        regulation_questions = [
+            ('기둥 간격', '기둥 간격이 안전 기준(띠장 방향 1.85m, 장선 방향 1.5m 이내)을 준수하나요?'),
+            ('작업발판', '작업발판의 폭이 최소 40cm 이상인가요?'),
+            ('가새', '가새가 5단 이내로 설치되어 있나요?'),
+            ('안전난간', '안전난간(상부, 중간, 발끝막이판)이 설치되어 있나요?'),
+        ]
+
+        for idx, (category, question) in enumerate(regulation_questions, 1):
+            # 해당 카테고리 위반 찾기
+            cat_violations = [v for v in violations if category in v or
+                            ('간격' in category and '간격' in v) or
+                            ('발판' in category and '발판' in v) or
+                            ('가새' in category and '가새' in v) or
+                            ('난간' in category and '난간' in v)]
+
+            is_compliant = len(cat_violations) == 0
+
+            annotations.append({
+                'id': f"{scene_id}_regulation_{category}",
+                'point': f"{scene_id}.npy",
+                'conversations': [
+                    {
+                        'from': 'human',
+                        'value': f'<point>\n{question}'
+                    },
+                    {
+                        'from': 'gpt',
+                        'value': f"{'네, 준수합니다.' if is_compliant else '아니요, 다음 문제가 있습니다: ' + ', '.join(cat_violations[:2])}"
+                    }
+                ],
+                'task_type': 'regulation_compliance_specific',
+                'regulation_category': category,
+                'compliant': is_compliant
+            })
+
+        # =================================================================
+        # 6️⃣ Spatial Relation (새로운 카테고리 - 공간 관계)
+        # =================================================================
+
+        # 6-1. 층간 높이 질문
+        if 'floor_heights' in config:
+            floor_heights = config['floor_heights']
+            if len(floor_heights) > 1:
+                annotations.append({
+                    'id': f"{scene_id}_spatial_floor_height",
+                    'point': f"{scene_id}.npy",
+                    'conversations': [
+                        {
+                            'from': 'human',
+                            'value': '<point>\n각 층의 높이는 얼마인가요?'
+                        },
+                        {
+                            'from': 'gpt',
+                            'value': f'층별 높이는 다음과 같습니다: ' + ', '.join([f'{i+1}층: {h:.2f}m' for i, h in enumerate(floor_heights)])
+                        }
+                    ],
+                    'task_type': 'spatial_relation_height',
+                    'floor_heights': floor_heights
+                })
+
+        # 6-2. 베이 너비 질문
+        if 'bay_width' in config:
+            bay_width = config['bay_width']
+            annotations.append({
+                'id': f"{scene_id}_spatial_bay_width",
+                'point': f"{scene_id}.npy",
+                'conversations': [
+                    {
+                        'from': 'human',
+                        'value': '<point>\n베이(bay)의 너비는 얼마인가요?'
+                    },
+                    {
+                        'from': 'gpt',
+                        'value': f'베이 너비는 {bay_width:.2f}m입니다.'
+                    }
+                ],
+                'task_type': 'spatial_relation_width',
+                'bay_width': bay_width
+            })
+
+        # 6-3. 전체 구조 크기
+        if 'num_bays' in config and 'num_floors' in config:
+            num_bays = config['num_bays']
+            num_floors = config['num_floors']
+            annotations.append({
+                'id': f"{scene_id}_spatial_structure_size",
+                'point': f"{scene_id}.npy",
+                'conversations': [
+                    {
+                        'from': 'human',
+                        'value': '<point>\n이 비계의 전체 구조 크기를 설명해주세요.'
+                    },
+                    {
+                        'from': 'gpt',
+                        'value': f'이 비계는 {num_bays}개의 베이와 {num_floors}개의 층으로 구성되어 있습니다.'
+                    }
+                ],
+                'task_type': 'spatial_relation_structure',
+                'num_bays': num_bays,
+                'num_floors': num_floors
+            })
+
+        # =================================================================
+        # 7️⃣ Component-Specific (부품별 세부 검사)
+        # =================================================================
+
+        # 7-1. 특정 발판 안전성 검사 (랜덤 3개)
+        if platforms:
+            selected_for_check = random.sample(platforms, min(3, len(platforms)))
+            for idx, comp in enumerate(selected_for_check, 1):
+                metadata = comp.metadata or {}
+                floor = metadata.get('floor', '?')
+                bay = metadata.get('bay', '?')
+
+                # 이 발판에 관련된 문제가 있는지 확인
+                related_violations = [v for v in violations if f'{floor}층' in str(v) and f'{bay}베이' in str(v)]
+                is_safe = len(related_violations) == 0
+
+                annotations.append({
+                    'id': f"{scene_id}_component_platform_{idx:03d}",
+                    'point': f"{scene_id}.npy",
+                    'conversations': [
+                        {
+                            'from': 'human',
+                            'value': f'<point>\n{floor}층 {bay}베이의 발판은 안전한가요?'
+                        },
+                        {
+                            'from': 'gpt',
+                            'value': f"{'네, 안전합니다.' if is_safe else '문제가 있습니다: ' + ', '.join(related_violations)}"
+                        }
+                    ],
+                    'task_type': 'component_specific_check',
+                    'target_instance_id': comp.instance_id,
+                    'is_safe': is_safe
+                })
 
         return annotations
 
