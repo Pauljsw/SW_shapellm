@@ -35,7 +35,7 @@ def load_model(model_path, model_base=None):
     else:
         model_name = "shapellm"
 
-    tokenizer, model, processor, context_len = load_pretrained_model(
+    tokenizer, model, context_len = load_pretrained_model(
         model_path=model_path,
         model_base=model_base,
         model_name=model_name,
@@ -44,7 +44,7 @@ def load_model(model_path, model_base=None):
         device_map="auto"
     )
     print(f"✅ Model loaded")
-    return tokenizer, model, processor, context_len
+    return tokenizer, model, context_len
 
 
 def prepare_point_cloud(point_path, data_args):
@@ -91,7 +91,7 @@ def main():
     args = parser.parse_args()
 
     # Load model
-    tokenizer, model, processor, context_len = load_model(
+    tokenizer, model, context_len = load_model(
         args.model_path,
         args.model_base
     )
