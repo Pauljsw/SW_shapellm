@@ -30,10 +30,20 @@ def load_model(model_path, model_base=None):
     """모델 로드"""
     print(f"🔄 Loading model from {model_path}...")
 
+    # LoRA checkpoint 자동 감지
+    model_path_obj = Path(model_path)
+    is_lora = (model_path_obj / 'adapter_model.bin').exists()
+
+    if is_lora:
+        print(f"   Detected LoRA checkpoint")
+        model_name = "lora-shapellm"
+    else:
+        model_name = "shapellm"
+
     tokenizer, model, processor, context_len = load_pretrained_model(
         model_path=model_path,
         model_base=model_base,
-        model_name="shapellm",
+        model_name=model_name,
         load_8bit=False,
         load_4bit=False,
         device_map="auto"
