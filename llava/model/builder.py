@@ -24,7 +24,11 @@ from llava.constants import DEFAULT_POINT_PATCH_TOKEN, DEFAULT_PT_START_TOKEN, D
 
 
 def load_pretrained_model(model_path, model_base, model_name, load_8bit=False, load_4bit=False, device_map="auto", device="cuda", torch_dtype=torch.bfloat16):
-    kwargs = {"device_map": device_map}
+    kwargs = {}
+
+    # Only add device_map if it's not None
+    if device_map is not None:
+        kwargs["device_map"] = device_map
 
     if load_8bit:
         kwargs['load_in_8bit'] = True
@@ -109,9 +113,8 @@ def load_pretrained_model(model_path, model_base, model_name, load_8bit=False, l
     if not vision_tower.is_loaded:
         vision_tower.load_model()
 
-    # Only move vision_tower if NOT using device_map="auto"
-    # When device_map="auto", model components may be on different GPUs
-    # and should not be forcibly moved
+    # Move vision_tower when NOT using device_map="auto"
+    # When device_map is None or single device, move to specified device
     if device_map != "auto":
         vision_tower.to(device=device, dtype=torch_dtype)
         if hasattr(vision_tower, "model"):
@@ -119,9 +122,6 @@ def load_pretrained_model(model_path, model_base, model_name, load_8bit=False, l
             print(f"[INFO] vision_tower.model moved to {device} with dtype {torch_dtype}")
     else:
         print(f"[INFO] device_map='auto' - vision_tower stays on its assigned device")
-        print(f"[INFO] vision_tower device: {vision_tower.device}")
-        if hasattr(vision_tower, "model"):
-            print(f"[INFO] vision_tower.model device: {vision_tower.model.device if hasattr(vision_tower.model, 'device') else 'N/A'}")
 
 
     if hasattr(model.config, "max_sequence_length"):
