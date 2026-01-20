@@ -26,7 +26,7 @@ class DataArgs:
         self.occlusion = occlusion
 
 
-def load_model(model_path, model_base=None, use_bf16=True):
+def load_model(model_path, model_base=None):
     """모델 로드"""
     print(f"🔄 Loading model from {model_path}...")
 
@@ -40,34 +40,18 @@ def load_model(model_path, model_base=None, use_bf16=True):
     else:
         model_name = "shapellm"
 
+    # load_pretrained_model now defaults to bfloat16 to match training
     tokenizer, model, context_len = load_pretrained_model(
         model_path=model_path,
         model_base=model_base,
         model_name=model_name,
         load_8bit=False,
         load_4bit=False,
-        device_map="auto"
+        device_map="auto",
+        torch_dtype=torch.bfloat16  # Match training dtype
     )
 
-    # Convert to bfloat16 if needed (to match training dtype)
-    if use_bf16 and torch.cuda.is_available():
-        print(f"   Converting model to bfloat16...")
-        model = model.to(torch.bfloat16)
-
-        # CRITICAL: Also convert vision tower explicitly
-        if hasattr(model, 'model') and hasattr(model.model, 'vision_tower'):
-            print(f"   Converting vision_tower to bfloat16...")
-            vision_tower = model.model.vision_tower
-            vision_tower = vision_tower.to(torch.bfloat16)
-            if hasattr(vision_tower, 'model'):
-                vision_tower.model = vision_tower.model.to(torch.bfloat16)
-
-        # Also convert mm_projector
-        if hasattr(model, 'model') and hasattr(model.model, 'mm_projector'):
-            print(f"   Converting mm_projector to bfloat16...")
-            model.model.mm_projector = model.model.mm_projector.to(torch.bfloat16)
-
-    print(f"✅ Model loaded successfully")
+    print(f"✅ Model loaded successfully with bfloat16 dtype")
     return tokenizer, model, context_len
 
 
