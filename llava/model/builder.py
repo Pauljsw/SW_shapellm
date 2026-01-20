@@ -113,6 +113,11 @@ def load_pretrained_model(model_path, model_base, model_name, load_8bit=False, l
     if not vision_tower.is_loaded:
         vision_tower.load_model()
 
+    # Move model to device if device_map was None (model loaded on CPU)
+    if device_map is None:
+        print(f"[INFO] Moving model to {device}")
+        model = model.to(device)
+
     # Move vision_tower when NOT using device_map="auto"
     # When device_map is None or single device, move to specified device
     if device_map != "auto":
