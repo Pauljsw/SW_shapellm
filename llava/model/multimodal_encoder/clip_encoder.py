@@ -65,6 +65,8 @@ class CLIPVisionTower(nn.Module):
                 global_features.append(global_feature.to(device=self.device, dtype=self.dtype))
         else:
             print(f" - pts.device (before to()): {pts.device}")
+            print(f" - self.device: {self.device}")  # ← 디버깅
+            print(f" - self.dtype: {self.dtype}")    # ← 디버깅
             pts_on_device = pts.to(device=self.device, dtype=self.dtype)
             print(f" - pts.device (after to()): {pts_on_device.device}")
 
@@ -80,6 +82,10 @@ class CLIPVisionTower(nn.Module):
             local_features = local_features.to(device=self.device, dtype=self.dtype)
             global_features = global_features.to(device=self.device, dtype=self.dtype)
             pos_features = pos_features.to(device=self.device, dtype=self.dtype)
+
+            print(f" - pos_features.device (after conversion): {pos_features.device}")  # ← 확인
+            print(f" - local_features.device (after conversion): {local_features.device}")
+            print(f" - global_features.device (after conversion): {global_features.device}")
 
         return pos_features, local_features, global_features
 
