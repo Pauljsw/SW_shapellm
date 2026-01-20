@@ -1,8 +1,8 @@
 """
-🏗️ 고도화된 비계 합성 데이터 생성 도구 (ShapeLLM용)
-- 한국 산업안전보건기준 준수 (2025년 기준)
-- 실제 시스템비계 규격 반영
-- 점진적 학습 목표 지원 (Referring → 누락 감지 → 안정성 → 손상 → 규정)
+Advanced Scaffold Synthetic Data Generation Tool for ShapeLLM
+- Complies with Korean Industrial Safety and Health Standards (2025)
+- Reflects actual system scaffold specifications
+- Supports progressive learning objectives (Referring → Missing Detection → Stability → Damage → Regulations)
 """
 
 import numpy as np
@@ -17,61 +17,61 @@ from collections import defaultdict
 
 @dataclass
 class ScaffoldComponent:
-    """비계 부품 정의"""
+    """Scaffold component definition"""
     name: str
     semantic_id: int
     instance_id: int
-    points: np.ndarray  # [N, 3] coordinates (color 제거)
+    points: np.ndarray  # [N, 6] coordinates with RGB colors
     bbox: Optional[np.ndarray] = None  # [8, 3] bounding box corners (world coords)
     bbox_norm: Optional[np.ndarray] = None  # [8, 3] bounding box corners (normalized coords)
-    metadata: Optional[Dict] = None  # 추가 메타데이터
+    metadata: Optional[Dict] = None  # Additional metadata
 
 class KoreanScaffoldRegulations:
-    """한국 산업안전보건기준 (2025년)"""
+    """Korean Industrial Safety and Health Standards (2025)"""
 
-    # 기둥 간격 기준
-    MAX_COLUMN_SPACING_LEDGER = 1.85  # 띠장 방향 (m)
-    MAX_COLUMN_SPACING_PURLIN = 1.5   # 장선 방향 (m)
+    # Column spacing standards
+    MAX_COLUMN_SPACING_LEDGER = 1.85  # Ledger direction (m)
+    MAX_COLUMN_SPACING_PURLIN = 1.5   # Purlin direction (m)
 
-    # 작업발판 기준
+    # Work platform standards
     MIN_PLATFORM_WIDTH = 0.40  # 40cm
     MAX_PLATFORM_GAP = 0.03    # 3cm
 
-    # 안전난간 기준
+    # Safety handrail standards
     TOP_RAIL_HEIGHT_MIN = 0.90   # 90cm
     TOP_RAIL_HEIGHT_MAX = 1.20   # 120cm
     MID_RAIL_REQUIRED = True
     TOE_BOARD_MIN_HEIGHT = 0.10  # 10cm
 
-    # 가새 설치 기준
-    MAX_BRACE_VERTICAL_SPAN = 5  # 5단 이내
-    BRACE_ANGLE_MIN = 40  # 40도
-    BRACE_ANGLE_MAX = 60  # 60도
+    # Brace installation standards
+    MAX_BRACE_VERTICAL_SPAN = 5  # Within 5 floors
+    BRACE_ANGLE_MIN = 40  # 40 degrees
+    BRACE_ANGLE_MAX = 60  # 60 degrees
 
-    # 벽 연결재 기준
-    MAX_WALL_TIE_SPACING = 5.0  # 수직/수평 5m 이내
+    # Wall tie standards
+    MAX_WALL_TIE_SPACING = 5.0  # Within 5m vertical/horizontal
 
     @classmethod
     def check_column_spacing(cls, spacing_x, spacing_y):
-        """기둥 간격 검증"""
+        """Validate column spacing"""
         violations = []
         if spacing_x > cls.MAX_COLUMN_SPACING_LEDGER:
-            violations.append(f"띠장 방향 기둥 간격 초과: {spacing_x:.2f}m > {cls.MAX_COLUMN_SPACING_LEDGER}m")
+            violations.append(f"Ledger direction column spacing exceeded: {spacing_x:.2f}m > {cls.MAX_COLUMN_SPACING_LEDGER}m")
         if spacing_y > cls.MAX_COLUMN_SPACING_PURLIN:
-            violations.append(f"장선 방향 기둥 간격 초과: {spacing_y:.2f}m > {cls.MAX_COLUMN_SPACING_PURLIN}m")
+            violations.append(f"Purlin direction column spacing exceeded: {spacing_y:.2f}m > {cls.MAX_COLUMN_SPACING_PURLIN}m")
         return violations
 
     @classmethod
     def check_platform_width(cls, width):
-        """발판 폭 검증"""
+        """Validate platform width"""
         if width < cls.MIN_PLATFORM_WIDTH:
-            return [f"작업발판 폭 부족: {width:.2f}m < {cls.MIN_PLATFORM_WIDTH}m"]
+            return [f"Work platform width insufficient: {width:.2f}m < {cls.MIN_PLATFORM_WIDTH}m"]
         return []
 
 class ScaffoldSpecs:
-    """비계 부품 규격 (mm 단위를 m로 변환)"""
+    """Scaffold component specifications (mm converted to m)"""
 
-    # 수직재 (Vertical Posts) - Ø48.6 * 2.3T
+    # Vertical Posts - Ø48.6 * 2.3T
     VERTICAL_LENGTHS = {
         'V-38': 3.8,
         'V-19': 1.9,
@@ -79,7 +79,7 @@ class ScaffoldSpecs:
         'V-04': 0.475
     }
 
-    # 수평재 (Horizontal Beams) - Ø42.7 * 2.3T
+    # Horizontal Beams - Ø42.7 * 2.3T
     HORIZONTAL_SPECS = {
         'H-18': {'length': 1.768, 'spacing': 1.817},
         'H-15': {'length': 1.463, 'spacing': 1.512},
@@ -89,14 +89,14 @@ class ScaffoldSpecs:
         'H-03': {'length': 0.244, 'spacing': 0.293}
     }
 
-    # 대각재 (Diagonal Braces) - Ø34 x 2.3T
+    # Diagonal Braces - Ø34 x 2.3T
     DIAGONAL_SPECS = {
         'B-1918': {'length': 2.629, 'height': 1.9, 'width': 1.829},
         'B-1915': {'length': 2.428, 'height': 1.9, 'width': 1.524},
         'B-1912': {'length': 2.251, 'height': 1.9, 'width': 1.219}
     }
 
-    # 발판 (Platform) 크기
+    # Platform sizes
     PLATFORM_SIZES = [
         (0.4, 0.598),
         (0.4, 0.902),

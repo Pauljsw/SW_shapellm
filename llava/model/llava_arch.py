@@ -99,18 +99,30 @@ class LlavaMetaForCausalLM(ABC):
         return self.get_model().get_vision_tower()
 
     def encode_points(self, points):
-        # Vision Tower 호출
+        # Get features from Vision Tower
         pos_features, local_features, global_features = self.get_model().get_vision_tower()(points)
 
-        # Safety check: Convert vision tower outputs to bfloat16 if needed
-        # This ensures consistency with training dtype (--bf16 True)
-        if pos_features.dtype != torch.bfloat16:
-            pos_features = pos_features.to(torch.bfloat16)
-            local_features = local_features.to(torch.bfloat16)
-            global_features = global_features.to(torch.bfloat16)
+        # CRITICAL: Ensure all three features have the same dtype as mm_projector weights
+        # Vision Tower may return features with different dtypes:
+        #   - pos_features: bfloat16 (from vision_tower)
+        #   - local_features: float32 (converted in clip_encoder.py)
+        #   - global_features: float32 (converted in clip_encoder.py)
+        # This causes "mat1 and mat2 must have the same dtype" error in mm_projector
 
-        # mm_projector (multimodal projection)
-        point_features = self.get_model().mm_projector(pos_features, local_features, global_features)
+        # Get mm_projector's weight dtype
+        mm_projector = self.get_model().mm_projector
+        target_dtype = next(mm_projector.parameters()).dtype
+
+        # Convert all three features to match mm_projector dtype
+        if pos_features.dtype != target_dtype:
+            pos_features = pos_features.to(target_dtype)
+        if local_features.dtype != target_dtype:
+            local_features = local_features.to(target_dtype)
+        if global_features.dtype != target_dtype:
+            global_features = global_features.to(target_dtype)
+
+        # Now all features have the same dtype as mm_projector weights
+        point_features = mm_projector(pos_features, local_features, global_features)
 
         return point_features
 
