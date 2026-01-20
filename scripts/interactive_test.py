@@ -49,6 +49,19 @@ def load_model(model_path, model_base=None, use_bf16=True):
         print(f"   Converting model to bfloat16...")
         model = model.to(torch.bfloat16)
 
+        # CRITICAL: Also convert vision tower explicitly
+        if hasattr(model, 'model') and hasattr(model.model, 'vision_tower'):
+            print(f"   Converting vision_tower to bfloat16...")
+            vision_tower = model.model.vision_tower
+            vision_tower = vision_tower.to(torch.bfloat16)
+            if hasattr(vision_tower, 'model'):
+                vision_tower.model = vision_tower.model.to(torch.bfloat16)
+
+        # Also convert mm_projector
+        if hasattr(model, 'model') and hasattr(model.model, 'mm_projector'):
+            print(f"   Converting mm_projector to bfloat16...")
+            model.model.mm_projector = model.model.mm_projector.to(torch.bfloat16)
+
     print(f"✅ Model loaded")
     return tokenizer, model, context_len
 
