@@ -58,10 +58,11 @@ class CLIPVisionTower(nn.Module):
                 print(f"   - local_feature.device: {local_feature.device}")
                 print(f"   - global_feature.device: {global_feature.device}")
 
-                # CRITICAL: Move features to the same device as vision_tower
-                pos_features.append(pos_feature.to(device=self.device, dtype=pts[0].dtype))
-                local_features.append(local_feature.to(device=self.device, dtype=pts[0].dtype))
-                global_features.append(global_feature.to(device=self.device, dtype=pts[0].dtype))
+                # CRITICAL: Move features to the same device and dtype as vision_tower
+                # Use self.dtype instead of pts.dtype to match vision_tower (important for training)
+                pos_features.append(pos_feature.to(device=self.device, dtype=self.dtype))
+                local_features.append(local_feature.to(device=self.device, dtype=self.dtype))
+                global_features.append(global_feature.to(device=self.device, dtype=self.dtype))
         else:
             print(f" - pts.device (before to()): {pts.device}")
             pts_on_device = pts.to(device=self.device, dtype=self.dtype)
@@ -73,11 +74,12 @@ class CLIPVisionTower(nn.Module):
             print(f" - local_features.device: {local_features.device}")
             print(f" - global_features.device: {global_features.device}")
 
-            # CRITICAL: Move features to the same device as vision_tower
+            # CRITICAL: Move features to the same device and dtype as vision_tower
             # Features may be on different device (cuda:3) than vision_tower (cuda:0)
-            local_features = local_features.to(device=self.device, dtype=pts.dtype)
-            global_features = global_features.to(device=self.device, dtype=pts.dtype)
-            pos_features = pos_features.to(device=self.device)
+            # Use self.dtype instead of pts.dtype to match vision_tower (important for training)
+            local_features = local_features.to(device=self.device, dtype=self.dtype)
+            global_features = global_features.to(device=self.device, dtype=self.dtype)
+            pos_features = pos_features.to(device=self.device, dtype=self.dtype)
 
         return pos_features, local_features, global_features
 
