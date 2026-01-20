@@ -58,11 +58,10 @@ class CLIPVisionTower(nn.Module):
                 print(f"   - local_feature.device: {local_feature.device}")
                 print(f"   - global_feature.device: {global_feature.device}")
 
-                # CRITICAL: Move features to the same device and dtype as vision_tower
-                # Use self.dtype instead of pts.dtype to match vision_tower (important for training)
-                pos_features.append(pos_feature.to(device=self.device, dtype=self.dtype))
-                local_features.append(local_feature.to(device=self.device, dtype=self.dtype))
-                global_features.append(global_feature.to(device=self.device, dtype=self.dtype))
+                # Don't convert here - let llava_arch.py handle dtype/device conversion once
+                pos_features.append(pos_feature)
+                local_features.append(local_feature)
+                global_features.append(global_feature)
         else:
             print(f" - pts.device (before to()): {pts.device}")
             print(f" - self.device: {self.device}")  # ← 디버깅
@@ -75,17 +74,7 @@ class CLIPVisionTower(nn.Module):
             print(f" - pos_features.device: {pos_features.device}")
             print(f" - local_features.device: {local_features.device}")
             print(f" - global_features.device: {global_features.device}")
-
-            # CRITICAL: Move features to the same device and dtype as vision_tower
-            # Features may be on different device (cuda:3) than vision_tower (cuda:0)
-            # Use self.dtype instead of pts.dtype to match vision_tower (important for training)
-            local_features = local_features.to(device=self.device, dtype=self.dtype)
-            global_features = global_features.to(device=self.device, dtype=self.dtype)
-            pos_features = pos_features.to(device=self.device, dtype=self.dtype)
-
-            print(f" - pos_features.device (after conversion): {pos_features.device}")  # ← 확인
-            print(f" - local_features.device (after conversion): {local_features.device}")
-            print(f" - global_features.device (after conversion): {global_features.device}")
+            print(f" - Returning features as-is (dtype/device conversion in llava_arch.py)")
 
         return pos_features, local_features, global_features
 
