@@ -22,7 +22,7 @@ class DataArgs:
         self.occlusion = occlusion
 
 
-def load_model(model_path, model_base=None):
+def load_model(model_path, model_base=None, use_bf16=True):
     print(f"🔄 Loading model from {model_path}...")
 
     # LoRA checkpoint 자동 감지
@@ -43,6 +43,12 @@ def load_model(model_path, model_base=None):
         load_4bit=False,
         device_map="auto"
     )
+
+    # Convert to bfloat16 if needed (to match training dtype)
+    if use_bf16 and torch.cuda.is_available():
+        print(f"   Converting model to bfloat16...")
+        model = model.to(torch.bfloat16)
+
     print(f"✅ Model loaded")
     return tokenizer, model, context_len
 

@@ -16,7 +16,7 @@ from llava.mm_utils import load_pts, process_pts
 from llava.conversation import conv_templates
 from llava.constants import POINT_TOKEN_INDEX
 
-def load_model(model_path, model_base=None):
+def load_model(model_path, model_base=None, use_bf16=True):
     """모델 로드"""
     print(f"Loading model from {model_path}...")
 
@@ -38,6 +38,11 @@ def load_model(model_path, model_base=None):
         load_4bit=False,
         device_map="auto"
     )
+
+    # Convert to bfloat16 if needed (to match training dtype)
+    if use_bf16 and torch.cuda.is_available():
+        print(f"   Converting model to bfloat16...")
+        model = model.to(torch.bfloat16)
 
     print(f"✅ Model loaded successfully")
     return tokenizer, model, context_len
