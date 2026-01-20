@@ -26,13 +26,9 @@ class CLIPVisionTower(nn.Module):
         self.vision_tower.load_state_dict(state_dict, strict=True)
         self.vision_tower.requires_grad_(False)
 
-        # ✅ 전체 모델을 cuda:0으로
-        self.vision_tower = self.vision_tower.to("cuda:0")
-
-        # ✅ 핵심: embed 모듈도 수동으로 이동
-        self.vision_tower.model.embed = self.vision_tower.model.embed.to("cuda:0")
-
-        print(f"[INFO] vision_tower + embed moved to cuda:0")
+        # Don't force device here - let device_map or builder.py handle it
+        # Vision tower will be moved to appropriate device by model loading process
+        print(f"[INFO] vision_tower loaded (device will be set by model loader)")
         self.is_loaded = True
 
 

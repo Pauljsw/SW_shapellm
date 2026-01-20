@@ -109,12 +109,19 @@ def load_pretrained_model(model_path, model_base, model_name, load_8bit=False, l
     if not vision_tower.is_loaded:
         vision_tower.load_model()
 
-    # Move both vision_tower and its model to the same device
-    vision_tower.to(device=device, dtype=torch_dtype)
-
-    if hasattr(vision_tower, "model"):
-        vision_tower.model = vision_tower.model.to(device=device, dtype=torch_dtype)
-        print(f"[INFO] vision_tower.model moved to {device} with dtype {torch_dtype}")
+    # Only move vision_tower if NOT using device_map="auto"
+    # When device_map="auto", model components may be on different GPUs
+    # and should not be forcibly moved
+    if device_map != "auto":
+        vision_tower.to(device=device, dtype=torch_dtype)
+        if hasattr(vision_tower, "model"):
+            vision_tower.model = vision_tower.model.to(device=device, dtype=torch_dtype)
+            print(f"[INFO] vision_tower.model moved to {device} with dtype {torch_dtype}")
+    else:
+        print(f"[INFO] device_map='auto' - vision_tower stays on its assigned device")
+        print(f"[INFO] vision_tower device: {vision_tower.device}")
+        if hasattr(vision_tower, "model"):
+            print(f"[INFO] vision_tower.model device: {vision_tower.model.device if hasattr(vision_tower.model, 'device') else 'N/A'}")
 
 
     if hasattr(model.config, "max_sequence_length"):
